@@ -1,6 +1,7 @@
 # mon serveur 
 import os
-import socket # importation de la biblioteque socket pour utiliser les fonctions reseau
+import socket # importation de la bibliotheque socket pour utiliser les fonctions reseau
+import random
 
 # creation du socket UDP IPv4
 serveur_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -21,7 +22,7 @@ while True:
     if message == "SYN":
         print(f"SYN recu de {adresse_client}, debut du handshake.")
         # parametre a envoyer au client
-        taille_bloc = 1024 #taille maximale des blocs envoyes
+        taille_bloc = 1024 # taille maximale des blocs envoyés
         nbr_bloc_ack = 5 # nombre de blocs avant ACK
 
         # Envoi du SYN-ACK au client avec les parametres
@@ -39,7 +40,7 @@ while True:
             print("Handshake echoue")
 
     if message == "ls":
-        print(f"demande de liste des fichier du client : {adresse_client}")
+        print(f"Demande de liste des fichiers du client : {adresse_client}")
 
         # Recuperation de la liste des fichiers disponibles dans le dossier "fichiers_disponibles"
         fichiers = os.listdir("fichiers_disponibles")
@@ -47,39 +48,66 @@ while True:
 
         # Envoyer la liste des fichiers au client
         serveur_udp.sendto(liste_fichiers.encode('utf-8'), adresse_client)
-        print("Liste des fichiers envoyee au client")
+        print("Liste des fichiers envoyée au client")
     
     if message.startswith("get|"):
-        nom_fichier = message.split("|")[1] # recupere le nom du fichier demande
-        print(f"Demande de fichier recu : {nom_fichier}")
+        nom_fichier = message.split("|")[1] # recupere le nom du fichier demandé
+        print(f"Demande de fichier reçue : {nom_fichier}")
 
         chemin_fichier = f"fichiers_disponibles/{nom_fichier}"
 
         if os.path.exists(chemin_fichier):
-            print(f"fichier trouve : {nom_fichier}")
+            print(f"Fichier trouvé : {nom_fichier}")
             
-            # Lire le fichier de facon binaire et transfere par paquets
+            # Lire le fichier de façon binaire et transférer par paquets
             with open(chemin_fichier, "rb") as fichier:
+                PERTE_PAQUET = 0.05 # Pourcentage de paquet perdu (5%)
                 while True:
                     # Lecture d'un segment de 1024 octets
                     segment = fichier.read(1024)
                     if not segment:
                         break # Fin du fichier
 
-                    serveur_udp.sendto(segment, adresse_client) # Envoie du segment
+                    # Simulation de perte de paquet (5%)
+                    if random.random() < PERTE_PAQUET:
+                        print("Perte simulée, pas de transfert")
+                        continue # On "perd" ce segment
 
-                    # Attente de l'acquitement du client (ACK)
-                    ack, _ = serveur_udp.recvfrom(4096)
-                    if ack.decode('utf-8') != "ACK":
-                        print("Erreur! : Acquittement non recu de la part du client")
-                        break 
+                    # Transfert du segment au client
+                    serveur_udp.sendto(segment, adresse_client)
+                    print("Segment envoyé")
 
-                    # message indiquant la fin du fichier
-                    serveur_udp.sendto("FIN".encode('utf8'), adresse_client)
-                    print("Fichier envoye avec succes.")
+                    # En attente de l'acquittement du client avec un timeout de 3s 
+                    tentatives = 0
+                    while tentatives < 5:  # Limite de 5 tentatives
+                        try:
+                            serveur_udp.settimeout(3.0)  # Timeout de 3 secondes
+                            ack, _ = serveur_udp.recvfrom(4096)
+
+                            if ack.decode('utf-8') == "ACK":
+                                print("ACK reçu pour ce segment")
+                                break  # On passe au segment suivant si l'ACK est reçu
+                            else:
+                                print(f"ACK non reçu, tentative {tentatives+1}/5")
+                                serveur_udp.sendto(segment, adresse_client)  # Retransmission du segment
+                                tentatives += 1
+                        except socket.timeout:
+                            tentatives += 1
+                            print(f"Timeout ! Retransmission {tentatives}/5")
+                            serveur_udp.sendto(segment, adresse_client)  # Retransmission après Timeout
+                    
+                    if tentatives == 5:
+                        print("Échec du transfert après 5 tentatives")
+                        serveur_udp.sendto("Échec du transfert".encode('utf-8'), adresse_client)
+                        break  # On arrête le transfert
+
+            # Envoi de "FIN" une seule fois apres le transfert
+            serveur_udp.sendto("FIN".encode('utf8'), adresse_client)
+            print("Fichier envoyé avec succès.")
+
+            # Reinitialisation du timeout 
+            serveur_udp.settimeout(None)
+
         else:
             print("Fichier introuvable!")
-            serveur_udp.sento("Erreur! : Fichier introuvable.".encode('utf-8'), adresse_client)
-    
-
-    
+            serveur_udp.sendto("Erreur! : Fichier introuvable.".encode('utf-8'), adresse_client)
