@@ -1,7 +1,8 @@
 # mon serveur 
 import os
 import socket # importation de la bibliotheque socket pour utiliser les fonctions reseau
-import random
+import random 
+
 
 # creation du socket UDP IPv4
 serveur_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -38,6 +39,11 @@ while True:
             print("La connexion est etablie avec succes.")
         else:
             print("Handshake echoue")
+        
+    if message == "bye":
+        print(f"Deconnrxion de : {adresse_client}.Fermeture de la connexion.")
+        serveur_udp.sendto("Deconnexion effectue".encode('utf-8'), adresse_client)
+        continue # On continue a ecouter sans fermer le serveur
 
     if message == "ls":
         print(f"Demande de liste des fichiers du client : {adresse_client}")
