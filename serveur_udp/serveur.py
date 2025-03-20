@@ -2,6 +2,7 @@
 import os
 import socket # importation de la bibliotheque socket pour utiliser les fonctions reseau
 import random 
+import hashlib
 
 
 # creation du socket UDP IPv4
@@ -14,6 +15,14 @@ adresse_serveur = ("127.0.0.1", 2212)
 serveur_udp.bind(adresse_serveur)
 
 print("Serveur en ecoute sur le port 2212")
+
+def calculer_sha256(chemin_fichier):
+    "calcule le hash SHA-256 d'un fichier"
+    hasher = hashlib.sha256()
+    with open(chemin_fichier, "rb") as fichier:
+        while chunk := fichier.read(4096): # Lire le fichier par morceaux
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 # Boucle infinie pour garder le serveur actif et en ecoute en permanence
 while True:
@@ -64,6 +73,13 @@ while True:
 
         if os.path.exists(chemin_fichier):
             print(f"Fichier trouvé : {nom_fichier}")
+
+            # Calcul du hash SHA-256 du fichier
+            hash_fichier = calculer_sha256(chemin_fichier)
+            
+            # Envoi du hash SHA-256 au client avant d'envoyer le fichier 
+            serveur_udp.sendto(hash_fichier.encode('utf-8'), adresse_client)
+            print(f"Hash SHA-256 envoye au client : {hash_fichier}")
             
             # Lire le fichier de façon binaire et transférer par paquets
             with open(chemin_fichier, "rb") as fichier:

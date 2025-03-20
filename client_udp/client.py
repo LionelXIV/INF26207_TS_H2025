@@ -1,5 +1,6 @@
 import socket
 import os  # pour gérer les fichiers et dossiers
+import hashlib
 
 client_udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 adresse_serveur = ("127.0.0.1", 2212)
@@ -18,6 +19,14 @@ if commande == "SYN-ACK":
     print(f"Taille bloc : {taille_bloc}, Nombre bloc avant ACK : {nbr_bloc_ack}")
     client_udp.sendto("ACK".encode('utf-8'), adresse_serveur)
     print("ACK final envoyé avec succès, handshake réussi")
+
+def calculer_sha256(chemin_fichier):
+    "Calcule le hash SHA-256 d'un fichier"
+    hasher = hashlib.sha256()
+    with open(chemin_fichier, "rb") as fichier:
+        while chunk := fichier.read(4096):  # Lire le fichier par morceaux
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 # Boucle pour permettre à l'utilisateur de choisir une commande
 while True:
@@ -39,6 +48,11 @@ while True:
     elif commande.startswith("get "):
         nom_fichier = commande.split(" ")[1]  # Extraction du nom du fichier demandé
         client_udp.sendto(f"get|{nom_fichier}".encode('utf-8'), adresse_serveur)
+
+        # Reception du hash SHA-256 du fichier depuis le serveur
+        hash_recu, _ = client_udp.recvfrom(4096)
+        hash_recu = hash_recu.decode('utf-8')
+        print(f"Hash SHA-256 reçu du serveur : {hash_recu}")
 
         # Verifier si le serveur indique que le fichier est introuvable
         try:
@@ -67,6 +81,16 @@ while True:
                     if segment == b"FIN":  # Fin du fichier donc fin du transfert
                         print(" Telechargement termine !")
                         break
+
+                    hash_calcule = calculer_sha256(chemin_sauvegarde)
+
+                    #  Verification de l'intégrite du fichier
+                    if hash_calcule == hash_recu:
+                        print("Verification reussie : le fichier est intact.")
+                    else:
+                       print(" Erreur : le fichier est corrompu !")
+                       print(f"Hash attendu : {hash_recu}")
+                       print(f"Hash obtenu  : {hash_calcule}")
 
                     fichier_recu.write(segment)  # Écriture du segment reçu
                     client_udp.sendto("ACK".encode('utf-8'), adresse_serveur)  # Envoi de l'acquittement
